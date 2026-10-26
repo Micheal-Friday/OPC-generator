@@ -4,7 +4,8 @@
 
 Windows + licensed/activated desktop Visio 2013 or newer required.
 Install: python -m pip install openpyxl pywin32
-Run: python OPC_Importer_v1.26_2026-10-18.py
+Run: python OPC_Importer_v1.27_2026-10-26.py
+Batch export and PDF merging follow case-insensitive alphabetical input filenames.
 Excel need not be installed. No VBA macros or UserForms are used.
 All inputs: empty Lane = 1; empty NextID = next nonempty Excel row, across lanes.
 The final blank NextID remains unconnected. ID and all eight headers are required.
@@ -481,9 +482,14 @@ def export_visio(excel_path, selected_names, output, report, direction='context'
         pythoncom.CoUninitialize()
 
 
+def filename_sort_key(path):
+    """Sort by filename rather than folder, ignoring letter case."""
+    return unicodedata.normalize('NFC', Path(path).name).casefold()
+
+
 def plan_batch_outputs(jobs, folder, export_pdf=False):
     planned, used = [], set()
-    for path, names in jobs:
+    for path, names in sorted(jobs, key=lambda job: filename_sort_key(job[0])):
         output = Path(folder) / (Path(path).stem + '.vsdx')
         key = str(output.resolve()).casefold()
         if key in used:
@@ -510,6 +516,7 @@ def inspect_workbook(path):
 
 
 def run_batch(jobs, report, direction='context', exporter=export_visio, export_pdf=False):
+    jobs = sorted(jobs, key=lambda job: filename_sort_key(job[0]))
     successes, failures = [], []
     for number, (path, names, output) in enumerate(jobs, 1):
         prefix = f'[{number}/{len(jobs)}] {Path(path).name} — '
@@ -559,6 +566,9 @@ def publish_file(source, destination):
 
 
 def process_outputs(jobs, report, direction, save_visio, individual_pdf, merge_output, skipped=None, exporter=export_visio):
+    # Sort source names before staging: numbered temporary PDFs must retain
+    # this order when merged (lexical sorting would put 10.pdf before 2.pdf).
+    jobs = sorted(jobs, key=lambda job: filename_sort_key(job[0]))
     skipped = skipped or set()
     successes, failures, pdfs = [], [], []
     need_pdf = individual_pdf or bool(merge_output)
@@ -630,7 +640,7 @@ def export_existing_visio(path, names, output, report, **options):
 class ImportWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('OPC — Excel to Visio | v1.26')
+        self.title('OPC — Excel to Visio | v1.27')
         self.geometry('740x620')
         self.minsize(560, 440)
         self.path = tk.StringVar(value='هنوز فایلی انتخاب نشده است')
@@ -703,7 +713,7 @@ class ImportWindow(tk.Tk):
             chosen = filedialog.askopenfilenames(parent=dialog, title='انتخاب فایل‌های Visio',
                 filetypes=[('Visio drawings', '*.vsdx *.vsdm *.vsd')])
             if chosen:
-                paths[:] = list(dict.fromkeys(chosen))
+                paths[:] = sorted(dict.fromkeys(chosen), key=filename_sort_key)
                 label.set('\n'.join(Path(p).name for p in paths))
         ttk.Button(dialog, text='انتخاب فایل‌های Visio', command=browse).pack(padx=16, pady=12)
         ttk.Label(dialog, textvariable=label, wraplength=560).pack(padx=16)
@@ -821,7 +831,7 @@ class ImportWindow(tk.Tk):
         self.group_buttons.clear()
         self.path.set(f'{len(self.books)} فایل اکسل در فهرست')
         self.update_summary()
-        for path, choices in self.books.items():
+        for path, choices in sorted(self.books.items(), key=lambda item: filename_sort_key(item[0])):
             group = ttk.LabelFrame(self.list_frame, text=Path(path).name, padding=8)
             group.pack(fill='x', padx=4, pady=6)
             ttk.Label(group, text=str(Path(path).parent), wraplength=610).pack(fill='x')
